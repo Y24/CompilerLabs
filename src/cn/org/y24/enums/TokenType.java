@@ -1,0 +1,27 @@
+package cn.org.y24.enums;
+
+public enum TokenType {
+    begin,
+    end,
+    integer,
+    _if,
+    then,
+    _else,
+    function,
+    read,
+    write,
+    identifier,
+    constant,
+    eq,
+    ne,
+    le,
+    l,
+    ge,
+    g,
+    minus,
+    multiply,
+    assignment,
+    lp,
+    rp,
+    semicolon,
+}

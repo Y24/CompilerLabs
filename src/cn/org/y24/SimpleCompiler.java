@@ -1,7 +1,7 @@
 package cn.org.y24;
 
 import cn.org.y24.core.LexicalAnalyzer;
-import cn.org.y24.core.SyntaxAnalyzer;
+import cn.org.y24.core.TopDownSyntaxAnalyzer;
 import cn.org.y24.interfaces.IAnalyzer;
 import cn.org.y24.interfaces.ICompiler;
 import cn.org.y24.table.SymbolTable;
@@ -18,7 +18,7 @@ public class SimpleCompiler implements ICompiler {
     public SimpleCompiler(String filename) {
         this.filename = filename;
         lexicalAnalyzer = new LexicalAnalyzer(filename);
-        syntaxAnalyzer = new SyntaxAnalyzer(filename);
+        syntaxAnalyzer = new TopDownSyntaxAnalyzer(filename);
         symbolTable = new SymbolTable();
     }
 

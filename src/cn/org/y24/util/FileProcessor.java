@@ -1,4 +1,4 @@
-package cn.org.y24.uitl;
+package cn.org.y24.util;
 
 import cn.org.y24.enums.FileType;
 
@@ -30,7 +30,7 @@ public class FileProcessor {
         return suffixTable.get(type);
     }
 
-    public PushbackReader readFile(String filename) {
+    public PushbackReader pushBackReadFile(String filename) {
         try {
             return new PushbackReader(new FileReader(filename));
         } catch (FileNotFoundException e) {
@@ -40,9 +40,19 @@ public class FileProcessor {
         return null;
     }
 
-    public BufferedWriter writeFile(String filename) {
+    public BufferedReader bufferedReadFile(String filename) {
         try {
-            return new BufferedWriter(new FileWriter(filename));
+            return new BufferedReader(new FileReader(filename));
+        } catch (IOException e) {
+            System.err.println(String.format("IO exception: %s", filename));
+            e.printStackTrace();
+        }
+        return null;
+    }
+
+    public BufferedWriter bufferedWriteFile(String filename, boolean flag) {
+        try {
+            return new BufferedWriter(new FileWriter(filename, flag));
         } catch (IOException e) {
             System.err.println(String.format("IO exception: %s", filename));
             e.printStackTrace();

@@ -1,4 +1,4 @@
-package cn.org.y24.uitl;
+package cn.org.y24.util;
 
 public class StringUtil {
     public static String getLexicalOutFormat(String target, int kind) {

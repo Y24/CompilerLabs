@@ -3,14 +3,14 @@ package cn.org.y24.core;
 import cn.org.y24.enums.FileType;
 import cn.org.y24.interfaces.IAnalyzer;
 import cn.org.y24.table.ReservedWordTable;
-import cn.org.y24.uitl.FileProcessor;
+import cn.org.y24.util.FileProcessor;
 
 import java.io.*;
 import java.util.LinkedList;
 import java.util.List;
 
-import static cn.org.y24.uitl.StringUtil.getErrorOutFormat;
-import static cn.org.y24.uitl.StringUtil.getLexicalOutFormat;
+import static cn.org.y24.util.StringUtil.getErrorOutFormat;
+import static cn.org.y24.util.StringUtil.getLexicalOutFormat;
 
 public class LexicalAnalyzer implements IAnalyzer {
     final String filename;
@@ -22,18 +22,14 @@ public class LexicalAnalyzer implements IAnalyzer {
     @Override
     public void analyze() throws IOException {
         FileProcessor fileProcessor = FileProcessor.getInstance();
-        final PushbackReader reader = fileProcessor.readFile(filename + FileProcessor.getSuffix(FileType.srcFile));
+        final PushbackReader reader = fileProcessor.pushBackReadFile(filename + FileProcessor.getSuffix(FileType.srcFile));
         List<String> analyseResult = new LinkedList<>();
         List<String> errorMessage = new LinkedList<>();
-        if (reader == null) {
-            System.err.println(String.format("File not found: %s", filename));
-            System.exit(1);
-        }
         int line = 1, column = 1;
         int current;
         do {
             current = reader.read();
-            if (current == -1) {
+            if (current == -1 || current == 0xffff) {
                 analyseResult.add(getLexicalOutFormat("EOF", 25));
                 break;
             }
@@ -55,7 +51,7 @@ public class LexicalAnalyzer implements IAnalyzer {
                     line++;
                     column = 1;
                     break;
-                //单字符首先判断
+                // single char token is the first guy to kill.
                 case '*', ')', '(', ';', '=', '-':
                     analyseResult.add(getLexicalOutFormat((char) current + "", ReservedWordTable.getInstance().getSingleKind((char) current)));
                     column++;
@@ -66,9 +62,11 @@ public class LexicalAnalyzer implements IAnalyzer {
                         case '>':
                             column += 2;
                             analyseResult.add(getLexicalOutFormat("<>", 13));
+                            break;
                         case '=':
                             column += 2;
                             analyseResult.add(getLexicalOutFormat("<=", 14));
+                            break;
                         default:
                             column++;
                             reader.unread(current);
@@ -148,8 +146,9 @@ public class LexicalAnalyzer implements IAnalyzer {
         while (true);
         // Now, deal with the output.
 
-        final BufferedWriter lexicalOutWriter = fileProcessor.writeFile(filename + FileProcessor.getSuffix(FileType.lexicalFile));
-        final BufferedWriter errorOutWriter = fileProcessor.writeFile(filename + FileProcessor.getSuffix(FileType.errorFile));
+        final BufferedWriter lexicalOutWriter = fileProcessor.bufferedWriteFile(filename + FileProcessor.getSuffix(FileType.lexicalFile), false);
+        final BufferedWriter errorOutWriter = fileProcessor.bufferedWriteFile(filename + FileProcessor.getSuffix(FileType.errorFile), false);
+        errorOutWriter.write("");
         errorMessage.forEach(s -> {
             try {
                 errorOutWriter.write(s);
@@ -169,7 +168,9 @@ public class LexicalAnalyzer implements IAnalyzer {
             }
 
         });
+        errorOutWriter.flush();
         errorOutWriter.close();
+        lexicalOutWriter.flush();
         lexicalOutWriter.close();
     }
 }

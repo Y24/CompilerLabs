@@ -1,6 +1,7 @@
 package cn.org.y24.table;
 
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 public class ReservedWordTable {
@@ -12,7 +13,7 @@ public class ReservedWordTable {
         this.put(';', 23);
         this.put('-', 18);
     }};
-    private final static Map<String, Integer> keywords = new HashMap<>() {{
+    private final static LinkedHashMap<String, Integer> keywords = new LinkedHashMap<>() {{
         this.put("begin", 1);
         this.put("end", 2);
         this.put("integer", 3);

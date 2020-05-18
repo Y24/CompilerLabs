@@ -14,6 +14,7 @@ import java.io.BufferedWriter;
 import java.io.IOException;
 import java.io.Reader;
 import java.util.*;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -105,12 +106,12 @@ public class TopDownSyntaxAnalyzer implements IAnalyzer {
         tryMove(1);
         symbolTable.getProcedureTable().get("main").setFirstVarAddress(0);
         descriptionStats();
-        final int[] index = {0};
+        AtomicInteger index = new AtomicInteger();
         symbolTable.getVariableTable().forEach(variable -> {
             if (variable.getProc().equals("main"))
-                index[0] = variable.getAddress();
+                index.set(variable.getAddress());
         });
-        symbolTable.getProcedureTable().get("main").setLastVarAddress(index[0]);
+        symbolTable.getProcedureTable().get("main").setLastVarAddress(index.get());
         execStats();
         tryMove(2);
 
@@ -118,7 +119,7 @@ public class TopDownSyntaxAnalyzer implements IAnalyzer {
 
     private void descriptionStats() {
         if (next().getKind() != 3) {
-            symbolTable.getProcedureTable().get(recorder.varProc).setLastVarAddress(symbolTable.getVariableTable().size() - 1);
+            symbolTable.getProcedureTable().get(recorder.varProc.peek()).setLastVarAddress(symbolTable.getVariableTable().size() - 1);
             return;
         }
         descriptionStat();
@@ -128,7 +129,8 @@ public class TopDownSyntaxAnalyzer implements IAnalyzer {
 
     private void descriptionStat() {
         tryMove(3);
-        switch (next().getKind()) {
+        final Token next = next();
+        switch (next.getKind()) {
             case 10:
                 varDescriptionStat();
                 break;
@@ -144,21 +146,22 @@ public class TopDownSyntaxAnalyzer implements IAnalyzer {
         tryMove(7);
         final Token funcName = next();
         if (funcName.getKind() == 10) {
-            recorder.varProc = funcName.getValue();
-            symbolTable.getProcedureTable().add(new Procedure(funcName.getValue(), recorder.procLevel));
+            recorder.varProc.push(funcName.getValue());
+            if (!symbolTable.getProcedureTable().add(new Procedure(funcName.getValue(), recorder.level)))
+                errorMessage.add(getErrorOutFormat(String.format("Procedure: %s redefined", funcName.getValue()), recorder.lineNumber));
         }
         tryMove(10);
         tryMove(21);
         final Token argument = next();
         if (argument.getKind() == 10) {
             final int size = symbolTable.getVariableTable().size();
-            symbolTable.getProcedureTable().get(recorder.varProc).setFirstVarAddress(size);
+            symbolTable.getProcedureTable().get(recorder.varProc.peek()).setFirstVarAddress(size);
             symbolTable.getVariableTable()
                     .add(new Variable(
                             argument.getValue(),
-                            recorder.varProc,
+                            recorder.varProc.peek(),
                             1,
-                            recorder.varLevel + 1, size));
+                            recorder.level + 1, size));
         }
         tryMove(10);
         tryMove(22);
@@ -176,13 +179,14 @@ public class TopDownSyntaxAnalyzer implements IAnalyzer {
     private void varDescriptionStat() {
         final Token var = next();
         if (var.getKind() == 10) {
-            symbolTable.getVariableTable()
+            if (!symbolTable.getVariableTable()
                     .add(new Variable(
                             var.getValue(),
-                            recorder.varProc,
+                            recorder.varProc.peek(),
                             0,
-                            recorder.varLevel,
-                            symbolTable.getVariableTable().size()));
+                            recorder.level,
+                            symbolTable.getVariableTable().size())))
+                errorMessage.add(getErrorOutFormat(String.format("Variable: %s redefined", var.getValue()), recorder.lineNumber));
         }
         tryMove(10);
     }
@@ -201,7 +205,8 @@ public class TopDownSyntaxAnalyzer implements IAnalyzer {
     }
 
     private void execStat() {
-        switch (next().getKind()) {
+        final Token next = next();
+        switch (next.getKind()) {
             case 8:
                 readStat();
                 break;
@@ -237,6 +242,10 @@ public class TopDownSyntaxAnalyzer implements IAnalyzer {
     }
 
     private void assignStat() {
+        final Token next = next();
+        if (!symbolTable.getVariableTable().contains(new Variable(next.getValue(), recorder.varProc.peek(), 0, recorder.level, 0))
+                && !symbolTable.getProcedureTable().contains(new Procedure(next.getValue(), recorder.level - 1)))
+            errorMessage.add(getErrorOutFormat("Undefined variable: " + next.getValue(), recorder.lineNumber));
         tryMove(10);
         tryMove(20);
         arithmeticExp();
@@ -270,14 +279,32 @@ public class TopDownSyntaxAnalyzer implements IAnalyzer {
     }
 
     private void factor() {
-        switch (moveForward().getKind()) {
+        final Token token = moveForward();
+        switch (token.getKind()) {
             case 11:
                 break;
             case 10:
                 if (next().getKind() == 21) {
+                    boolean result = false;
+                    for (int i = recorder.level; i >= 0; i--)
+                        if (symbolTable.getProcedureTable().contains(new Procedure(token.getValue(), i))) {
+                            result = true;
+                            break;
+                        }
+                    if (!result)
+                        errorMessage.add(getErrorOutFormat("Undefined procedure: " + token.getValue(), recorder.lineNumber));
                     moveForward();
                     arithmeticExp();
                     tryMove(22);
+                } else {
+                    boolean result = false;
+                    for (int i = recorder.level; i >= 0; i--)
+                        if (symbolTable.getVariableTable().contains(new Variable(token.getValue(), recorder.varProc.get(i), 0, i, 0))) {
+                            result = true;
+                            break;
+                        }
+                    if (!result)
+                        errorMessage.add(getErrorOutFormat("Undefined variable: " + token.getValue(), recorder.lineNumber));
 
                 }
                 break;
@@ -289,16 +316,21 @@ public class TopDownSyntaxAnalyzer implements IAnalyzer {
 
     private void writeStat() {
         tryMove(9);
+        rwSubStat();
+    }
+
+    private void rwSubStat() {
         tryMove(21);
+        final Token token = next();
+        if (token.getKind() == 10 && !symbolTable.getVariableTable().contains(new Variable(token.getValue(), recorder.varProc.peek(), 0, recorder.level, 0)))
+            errorMessage.add(getErrorOutFormat("Undefined variable: " + token.getValue(), recorder.lineNumber));
         tryMove(10);
         tryMove(22);
     }
 
     private void readStat() {
         tryMove(8);
-        tryMove(21);
-        tryMove(10);
-        tryMove(22);
+        rwSubStat();
     }
 
     private void drop() {
@@ -352,12 +384,11 @@ public class TopDownSyntaxAnalyzer implements IAnalyzer {
                 unexpectedEnd();
                 break;
             case 1:
-                recorder.procLevel++;
-                recorder.varLevel++;
+                recorder.level++;
                 break;
             case 2:
-                recorder.procLevel--;
-                recorder.varLevel--;
+                recorder.level--;
+                recorder.varProc.pop();
                 break;
             default:
                 break;

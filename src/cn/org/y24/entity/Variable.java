@@ -11,6 +11,15 @@ public class Variable {
     final int level;
     final int address;
 
+    @Override
+    public boolean equals(Object obj) {
+        return obj instanceof Variable &&
+                name.equals(((Variable) obj).name) &&
+                proc.equals(((Variable) obj).proc) &&
+                kind == ((Variable) obj).kind &&
+                level == ((Variable) obj).level;
+    }
+
     public String getName() {
         return name;
     }

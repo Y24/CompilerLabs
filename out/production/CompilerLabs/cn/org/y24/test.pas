@@ -1,7 +1,7 @@
 begin
   integer k;
-  integer g;
-  integer function (n);
+  integer m;
+  integer function f(n);
     begin
       integer n;
       if n<=0 then f:=1;
@@ -9,5 +9,5 @@ begin
     end;
   read(m);
   k:=f(m);
-  write(f);
+  write(k);
 end

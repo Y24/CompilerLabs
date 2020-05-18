@@ -1,6 +1,6 @@
 begin
   integer k;
-  integer g;
+  integer m;
   integer function f(n);
     begin
       integer n;
@@ -9,5 +9,5 @@ begin
     end;
   read(m);
   k:=f(m);
-  write(f);
+  write(k);
 end

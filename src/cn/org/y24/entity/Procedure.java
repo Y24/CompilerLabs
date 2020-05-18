@@ -11,6 +11,12 @@ public class Procedure {
     int lastVarAddress;
 
     @Override
+    public boolean equals(Object obj) {
+        return obj instanceof Procedure && ((Procedure) obj).name.equals(name) &&
+                ((Procedure) obj).level == level;
+    }
+
+    @Override
     public String toString() {
         return StringUtil.paddingRightAll(new String[]{name, type, level + "", firstVarAddress + "", lastVarAddress + ""}, counter);
     }

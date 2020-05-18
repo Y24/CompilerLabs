@@ -1,6 +1,7 @@
 begin
   integer k;
-  integer function f(n);
+  integer g;
+  integer function (n);
     begin
       integer n;
       if n<=0 then f:=1;

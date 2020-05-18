@@ -1,5 +1,6 @@
 begin
   integer k;
+  integer g;
   integer function f(n);
     begin
       integer n;

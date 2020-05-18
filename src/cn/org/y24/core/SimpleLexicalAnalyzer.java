@@ -12,10 +12,10 @@ import java.util.List;
 import static cn.org.y24.util.StringUtil.getErrorOutFormat;
 import static cn.org.y24.util.StringUtil.getLexicalOutFormat;
 
-public class LexicalAnalyzer implements IAnalyzer {
+public class SimpleLexicalAnalyzer implements IAnalyzer {
     final String filename;
 
-    public LexicalAnalyzer(String filename) {
+    public SimpleLexicalAnalyzer(String filename) {
         this.filename = filename;
     }
 

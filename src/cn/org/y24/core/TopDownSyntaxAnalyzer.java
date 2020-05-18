@@ -1,50 +1,52 @@
 package cn.org.y24.core;
 
+import cn.org.y24.entity.Procedure;
 import cn.org.y24.entity.Token;
+import cn.org.y24.entity.Variable;
 import cn.org.y24.enums.FileType;
-import cn.org.y24.enums.SyntaxExceptResult;
 import cn.org.y24.interfaces.IAnalyzer;
+import cn.org.y24.table.SymbolTable;
 import cn.org.y24.util.FileProcessor;
+import cn.org.y24.util.SyntaxAnalyzerRecorder;
 
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.IOException;
 import java.io.Reader;
-import java.util.ArrayList;
-import java.util.LinkedList;
-import java.util.List;
+import java.util.*;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
-import static cn.org.y24.util.StringUtil.getErrorOutFormat;
+import static cn.org.y24.util.StringUtil.*;
 
 public class TopDownSyntaxAnalyzer implements IAnalyzer {
-    final String filename;
-    List<String> errorMessage = new LinkedList<>();
-    Token[] tokens;
-    int index;
-    int lineNumber;
-    private final List<String> infoList = new ArrayList<>(30) {{
-        for (int i = 0; i < 30; i++)
-            this.add("");
-        this.add(1, "Miss keyword: begin");
-        this.add(2, "Miss keyword: end");
-        this.add(3, "Miss keyword: integer");
-        this.add(4, "Miss keyword: if");
-        this.add(5, "Miss keyword: then");
-        this.add(6, "Miss keyword: else");
-        this.add(7, "Miss keyword: function");
-        this.add(8, "Miss keyword: read");
-        this.add(9, "Miss keyword: write");
-        this.add(10, "Miss an identifier");
-        this.add(11, "Miss a constant");
-        this.add(12, "Miss boolean operator");
-        this.add(18, "Miss a -");
-        this.add(19, "Miss a *");
-        this.add(20, "Miss a :=");
-        this.add(21, "Miss a (");
-        this.add(22, "Miss a )");
-        this.add(23, "Miss a ;");
+    private final Map<Integer, String> infoList = new HashMap<>(30) {{
+        this.put(1, "Miss keyword: begin");
+        this.put(2, "Miss keyword: end");
+        this.put(3, "Miss keyword: integer");
+        this.put(4, "Miss keyword: if");
+        this.put(5, "Miss keyword: then");
+        this.put(6, "Miss keyword: else");
+        this.put(7, "Miss keyword: function");
+        this.put(8, "Miss keyword: read");
+        this.put(9, "Miss keyword: write");
+        this.put(10, "Miss an identifier");
+        this.put(11, "Miss a constant");
+        this.put(12, "Miss boolean operator");
+        this.put(18, "Miss a -");
+        this.put(19, "Miss a *");
+        this.put(20, "Miss a :=");
+        this.put(21, "Miss a (");
+        this.put(22, "Miss a )");
+        this.put(23, "Miss a ;");
 
     }};
+    final String filename;
+    final List<String> errorMessage = new LinkedList<>();
+    final SymbolTable symbolTable = new SymbolTable();
+    final SyntaxAnalyzerRecorder recorder = new SyntaxAnalyzerRecorder();
+    Token[] tokens;
+
 
     public TopDownSyntaxAnalyzer(String filename) {
         this.filename = filename;
@@ -56,13 +58,23 @@ public class TopDownSyntaxAnalyzer implements IAnalyzer {
        */
     @Override
     public void analyze() throws IOException {
-
         // check if error occurs in lexical analyse.
         if (hasLexicalError(filename)) {
             System.out.println("Syntax analyse cannot continue because of lexical error!");
+            return;
         }
+        init();
+        program();
+        end();
+    }
+
+
+    private void init() throws IOException {
         // clean work.
         errorMessage.clear();
+        symbolTable.getProcedureTable().init();
+        symbolTable.getVariableTable().init();
+        recorder.init();
         // init tokens and index
         final BufferedReader reader = FileProcessor.getInstance().bufferedReadFile(filename + FileProcessor.getSuffix(FileType.lexicalFile));
         final BufferedWriter writer = FileProcessor.getInstance().bufferedWriteFile(filename + FileProcessor.getSuffix(FileType.syntaxFile), false);
@@ -81,22 +93,6 @@ public class TopDownSyntaxAnalyzer implements IAnalyzer {
         writer.flush();
         writer.close();
         tokens = list.toArray(new Token[0]);
-        index = -1;
-        lineNumber = 1;
-        program();
-        final BufferedWriter bufferedWriter = FileProcessor.getInstance().bufferedWriteFile(filename + FileProcessor.getSuffix(FileType.errorFile), true);
-
-        errorMessage.forEach(s -> {
-            try {
-                bufferedWriter.write(s);
-                bufferedWriter.newLine();
-            } catch (IOException e) {
-                e.printStackTrace();
-                System.err.println("Exception occurs when writing syntax error file.");
-            }
-        });
-        bufferedWriter.flush();
-        bufferedWriter.close();
     }
 
     // program -> subProgram
@@ -106,26 +102,32 @@ public class TopDownSyntaxAnalyzer implements IAnalyzer {
 
     // subProgram -> begin varStats ; execStats end
     private void subProgram() {
-        checkIfEnd();
         tryMove(1);
+        symbolTable.getProcedureTable().get("main").setFirstVarAddress(0);
         descriptionStats();
+        final int[] index = {0};
+        symbolTable.getVariableTable().forEach(variable -> {
+            if (variable.getProc().equals("main"))
+                index[0] = variable.getAddress();
+        });
+        symbolTable.getProcedureTable().get("main").setLastVarAddress(index[0]);
         execStats();
         tryMove(2);
+
     }
 
     private void descriptionStats() {
-        checkIfEnd();
-        if (next().getKind() != 3)
+        if (next().getKind() != 3) {
+            symbolTable.getProcedureTable().get(recorder.varProc).setLastVarAddress(symbolTable.getVariableTable().size() - 1);
             return;
+        }
         descriptionStat();
         tryMove(23);
         descriptionStats();
     }
 
     private void descriptionStat() {
-        checkIfEnd();
         tryMove(3);
-        checkIfEnd();
         switch (next().getKind()) {
             case 10:
                 varDescriptionStat();
@@ -134,14 +136,30 @@ public class TopDownSyntaxAnalyzer implements IAnalyzer {
                 funcDescriptionStat();
                 break;
             default:
-                errorMessage.add(getErrorOutFormat("Miss identifier or function keyword", lineNumber));
+                errorMessage.add(getErrorOutFormat("Miss identifier or function keyword", recorder.lineNumber));
         }
     }
 
     private void funcDescriptionStat() {
         tryMove(7);
+        final Token funcName = next();
+        if (funcName.getKind() == 10) {
+            recorder.varProc = funcName.getValue();
+            symbolTable.getProcedureTable().add(new Procedure(funcName.getValue(), recorder.procLevel));
+        }
         tryMove(10);
         tryMove(21);
+        final Token argument = next();
+        if (argument.getKind() == 10) {
+            final int size = symbolTable.getVariableTable().size();
+            symbolTable.getProcedureTable().get(recorder.varProc).setFirstVarAddress(size);
+            symbolTable.getVariableTable()
+                    .add(new Variable(
+                            argument.getValue(),
+                            recorder.varProc,
+                            1,
+                            recorder.varLevel + 1, size));
+        }
         tryMove(10);
         tryMove(22);
         tryMove(23);
@@ -156,13 +174,21 @@ public class TopDownSyntaxAnalyzer implements IAnalyzer {
     }
 
     private void varDescriptionStat() {
+        final Token var = next();
+        if (var.getKind() == 10) {
+            symbolTable.getVariableTable()
+                    .add(new Variable(
+                            var.getValue(),
+                            recorder.varProc,
+                            0,
+                            recorder.varLevel,
+                            symbolTable.getVariableTable().size()));
+        }
         tryMove(10);
-        checkIfEnd();
     }
 
 
     private void execStats() {
-        checkIfEnd();
         final int kind = next().getKind();
         if (List.of(8, 9, 10).contains(kind)) {
             execStat();
@@ -189,12 +215,11 @@ public class TopDownSyntaxAnalyzer implements IAnalyzer {
                 ifStat();
                 break;
             default:
-                errorMessage.add(getErrorOutFormat("Miss identifier or keywords read,write,if", lineNumber));
+                errorMessage.add(getErrorOutFormat("Miss identifier or keywords read,write,if", recorder.lineNumber));
         }
     }
 
     private void ifStat() {
-        checkIfEnd();
         tryMove(4);
         conditionExp();
         tryMove(5);
@@ -204,29 +229,25 @@ public class TopDownSyntaxAnalyzer implements IAnalyzer {
     }
 
     private void conditionExp() {
-        checkIfEnd();
         arithmeticExp();
         final int kind = moveForward().getKind();
         if (kind > 17 || kind < 12)
-            errorMessage.add(getErrorOutFormat("Miss boolean operator", lineNumber));
+            errorMessage.add(getErrorOutFormat("Miss boolean operator", recorder.lineNumber));
         arithmeticExp();
     }
 
     private void assignStat() {
-        checkIfEnd();
         tryMove(10);
         tryMove(20);
         arithmeticExp();
     }
 
     private void arithmeticExp() {
-        checkIfEnd();
         item();
         subArithmeticExp();
     }
 
     private void subArithmeticExp() {
-        checkIfEnd();
         if (next().getKind() == 18) {
             moveForward();
             item();
@@ -236,13 +257,11 @@ public class TopDownSyntaxAnalyzer implements IAnalyzer {
 
 
     private void item() {
-        checkIfEnd();
         factor();
         subItem();
     }
 
     private void subItem() {
-        checkIfEnd();
         if (next().getKind() == 19) {
             moveForward();
             factor();
@@ -251,7 +270,6 @@ public class TopDownSyntaxAnalyzer implements IAnalyzer {
     }
 
     private void factor() {
-        checkIfEnd();
         switch (moveForward().getKind()) {
             case 11:
                 break;
@@ -264,13 +282,12 @@ public class TopDownSyntaxAnalyzer implements IAnalyzer {
                 }
                 break;
             default:
-                errorMessage.add(getErrorOutFormat("Miss constant or identifier", lineNumber));
+                errorMessage.add(getErrorOutFormat("Miss constant or identifier", recorder.lineNumber));
         }
     }
 
 
     private void writeStat() {
-        checkIfEnd();
         tryMove(9);
         tryMove(21);
         tryMove(10);
@@ -278,7 +295,6 @@ public class TopDownSyntaxAnalyzer implements IAnalyzer {
     }
 
     private void readStat() {
-        checkIfEnd();
         tryMove(8);
         tryMove(21);
         tryMove(10);
@@ -288,12 +304,12 @@ public class TopDownSyntaxAnalyzer implements IAnalyzer {
     private void drop() {
         int kind;
         do {
-            kind = tokens[index].getKind();
-            index++;
+            kind = tokens[recorder.index].getKind();
+            recorder.index++;
             if (kind == 23 || kind == 25)
                 continue;
             if (kind == 24) {
-                lineNumber++;
+                recorder.lineNumber++;
                 continue;
             }
             break;
@@ -302,57 +318,114 @@ public class TopDownSyntaxAnalyzer implements IAnalyzer {
     }
 
     private Token next() {
-        int temp = index + 1;
+        if (recorder.index == tokens.length - 1)
+            unexpectedEnd();
+        int temp = recorder.index + 1;
         while (tokens[temp].getKind() == 24)
             temp++;
         return tokens[temp];
     }
 
     private Token moveForward() {
-        index++;
-        while (tokens[index].getKind() == 24) {
-            lineNumber++;
-            index++;
+        recorder.index++;
+        while (tokens[recorder.index].getKind() == 24) {
+            recorder.lineNumber++;
+            recorder.index++;
         }
-        return tokens[index];
+        return tokens[recorder.index];
     }
 
     private void tryMove(int kind) {
-        if (next().getKind() != kind)
-            errorMessage.add(getErrorOutFormat(infoList.get(kind), lineNumber));
-        else moveForward();
+        final int next = next().getKind();
+        if (next != kind)
+            errorMessage.add(getErrorOutFormat(infoList.get(kind), recorder.lineNumber));
+        else {
+            record(kind);
+            moveForward();
+        }
+
     }
 
-    private SyntaxExceptResult expect(int kind) {
-        return moveForward().getKind() == kind ? SyntaxExceptResult.success : SyntaxExceptResult.normalFail;
-    }
-
-    private void checkIfEnd() {
-        if (index >= tokens.length - 1) {
-            try {
-                endWord();
-            } catch (IOException e) {
-                System.err.println("Exception occurs when write syntax error file.");
-                e.printStackTrace();
-            }
-            System.exit(0);
+    private void record(int kind) {
+        switch (kind) {
+            case 25:
+                unexpectedEnd();
+                break;
+            case 1:
+                recorder.procLevel++;
+                recorder.varLevel++;
+                break;
+            case 2:
+                recorder.procLevel--;
+                recorder.varLevel--;
+                break;
+            default:
+                break;
         }
     }
 
-    private void endWord() throws IOException {
-        final BufferedWriter writer = FileProcessor.getInstance().bufferedWriteFile(filename + FileProcessor.getSuffix(FileType.errorFile), false);
+    private void cleanUpErrorMessage() {
+        final Map<Integer, List<String>> sorted = new HashMap<>();
         errorMessage.forEach(s -> {
-            try {
-                writer.write(s);
-                writer.newLine();
-            } catch (IOException e) {
-                e.printStackTrace();
-                System.err.println("Exception when writing syntax error result");
+            final Matcher matcher =
+                    Pattern.compile("\\*{3}LINE:(\\d+) {2}(.+)").matcher(s);
+            if (matcher.matches()) {
+                final int lineNumber = Integer.parseInt(matcher.group(1));
+                if (!sorted.containsKey(lineNumber))
+                    sorted.put(lineNumber, new LinkedList<>());
+                sorted.get(lineNumber).add(s);
             }
-
         });
-        writer.flush();
-        writer.close();
+        errorMessage.clear();
+        sorted.values().forEach(strings -> errorMessage.add(strings.get(0)));
+    }
+
+    private void end() {
+        cleanUpErrorMessage();
+        try {
+            final BufferedWriter errorWriter = FileProcessor.getInstance().bufferedWriteFile(filename + FileProcessor.getSuffix(FileType.errorFile), true);
+            final BufferedWriter varWriter = FileProcessor.getInstance().bufferedWriteFile(filename + FileProcessor.getSuffix(FileType.variableFile), false);
+            final BufferedWriter procWriter = FileProcessor.getInstance().bufferedWriteFile(filename + FileProcessor.getSuffix(FileType.procedureFile), false);
+            for (String s : errorMessage) {
+                errorWriter.write(s);
+                errorWriter.newLine();
+            }
+            varWriter.write(paddingRightAll(new String[]{"name", "proc", "kind", "type", "level", "address"}, Variable.counter));
+            varWriter.newLine();
+            symbolTable.getVariableTable().forEach(var -> {
+                try {
+                    varWriter.write(var.toString());
+                    varWriter.newLine();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            });
+            procWriter.write(paddingRightAll(new String[]{"name", "type", "level", "firstVarAddress", "lastVarAddress"}, Procedure.counter));
+            procWriter.newLine();
+            symbolTable.getProcedureTable().forEach(proc -> {
+                try {
+                    procWriter.write(proc.toString());
+                    procWriter.newLine();
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            });
+            errorWriter.flush();
+            errorWriter.close();
+            varWriter.flush();
+            varWriter.close();
+            procWriter.flush();
+            procWriter.close();
+        } catch (IOException e) {
+            e.printStackTrace();
+            System.err.println("Exception occurs when writing syntax error file.");
+        }
+    }
+
+    private void unexpectedEnd() {
+        end();
+        System.err.println("Unexpected end.");
+        System.exit(1);
     }
 
     private boolean hasLexicalError(String file) throws IOException {

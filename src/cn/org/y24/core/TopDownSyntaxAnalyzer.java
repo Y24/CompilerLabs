@@ -18,7 +18,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-import static cn.org.y24.util.StringUtil.*;
+import static cn.org.y24.util.StringUtil.getErrorOutFormat;
+import static cn.org.y24.util.StringUtil.paddingRightAll;
 
 public class TopDownSyntaxAnalyzer implements IAnalyzer {
     private final Map<Integer, String> infoList = new HashMap<>(30) {{
@@ -62,7 +63,7 @@ public class TopDownSyntaxAnalyzer implements IAnalyzer {
         // check if error occurs in lexical analyse.
         if (hasLexicalError(filename)) {
             System.out.println("Syntax analyse cannot continue because of lexical error!");
-            return;
+            System.exit(1);
         }
         init();
         program();
@@ -447,9 +448,14 @@ public class TopDownSyntaxAnalyzer implements IAnalyzer {
             varWriter.close();
             procWriter.flush();
             procWriter.close();
+            if(!errorMessage.isEmpty()){
+                System.err.println("Syntax error occur!");
+                System.exit(1);
+            }
         } catch (IOException e) {
             e.printStackTrace();
             System.err.println("Exception occurs when writing syntax error file.");
+            System.exit(1);
         }
     }
 
